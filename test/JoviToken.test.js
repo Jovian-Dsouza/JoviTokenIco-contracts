@@ -27,12 +27,12 @@ describe("Token contract", function() {
 
     it("Should have same symbol", async function () {
         const {contract} = await loadFixture(deployTokenFixture);
-        expect(await contract.symbol(), _symbol);
+        expect(await contract.symbol()).to.equal(_symbol);
     });
 
     it("Should match the number of decimal places", async function () {
         const { contract } = await loadFixture(deployTokenFixture);
-        expect(await contract.decimals(), _decimals);
+        expect(await contract.decimals()).to.equal(_decimals);
     });
 
 });
