@@ -1,6 +1,7 @@
-const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
+const { loadFixture, time } = require('@nomicfoundation/hardhat-network-helpers');
 const { expect, should, assert } = require('chai');
 const { ethers } = require('hardhat');
+const { duration } = require('./helpers/time');
 
 describe("Crowdsale", function() {
 
@@ -12,6 +13,7 @@ describe("Crowdsale", function() {
     const _cap = ethers.utils.parseEther("2", "ether");
     const investorMinCap = ethers.utils.parseEther("0.002", "ether");
     const investorMaxCap = ethers.utils.parseEther("50", "ether");
+    
 
     async function deployFixture() {
         const [owner, addr1, addr2] = await ethers.getSigners();
@@ -21,12 +23,18 @@ describe("Crowdsale", function() {
         await contract.deployed();
 
 
+        const _openingTime = await time.latest()  + duration.weeks(1);
+        const _closingTime = _openingTime + duration.weeks(1);
+
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap);
+        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap, _openingTime, _closingTime);
         await crowdsale.deployed();
         
         //Add minter ownership
         await contract.addMinter(crowdsale.address);
+
+        //Adavace time of the blockchain so that the crowdsale is open
+        await time.increaseTo(_openingTime+1);
 
         return { contract, crowdsale, owner, addr1, addr2};
 

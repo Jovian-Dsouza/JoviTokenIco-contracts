@@ -4,8 +4,10 @@ pragma solidity ^0.5.0;
 import "@openzeppelin/contracts/crowdsale/Crowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/emission/MintedCrowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/validation/CappedCrowdsale.sol";
+import "@openzeppelin/contracts/crowdsale/validation/TimedCrowdsale.sol";
 
-contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale {
+
+contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale {
 
     //Investor contribution capping
     uint256 public investorMinCap = 2e15; //0.002 ether
@@ -16,10 +18,13 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale {
         uint256 _rate, 
         address payable _wallet, 
         IERC20 _token,
-        uint256 _cap
+        uint256 _cap,
+        uint256 _openingTime, 
+        uint256 _closingTime
     )
     Crowdsale(_rate, _wallet, _token)
     CappedCrowdsale(_cap)
+    TimedCrowdsale(_openingTime, _closingTime)
     public {
         
     }
