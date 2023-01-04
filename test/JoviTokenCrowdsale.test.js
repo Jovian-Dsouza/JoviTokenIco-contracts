@@ -9,6 +9,9 @@ describe("Crowdsale", function() {
     const _decimals = 18;
 
     const _rate = 500; //Number of tokens per 1 Eth
+    const _cap = ethers.utils.parseEther("2", "ether");
+    const investorMinCap = ethers.utils.parseEther("0.002", "ether");
+    const investorMaxCap = ethers.utils.parseEther("50", "ether");
 
     async function deployFixture() {
         const [owner, addr1, addr2] = await ethers.getSigners();
@@ -19,7 +22,7 @@ describe("Crowdsale", function() {
 
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address);
+        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap);
         await crowdsale.deployed();
         
         //Add minter ownership
@@ -72,5 +75,65 @@ describe("Crowdsale", function() {
 
         })
     });
+
+    describe("Capped Crowdsale", function () {
+        it("should match the cap", async function () {
+            const {contract, owner, crowdsale, addr2} = await loadFixture(deployFixture);
+            expect(await crowdsale.cap()).to.equal(_cap);
+        });
+    });
+
+    describe('Buy tokens', function() {
+        describe('when the contribution is less than the min cap', function() {
+            it('should reject the transaction', async function() {
+                const {crowdsale, owner, addr1, addr2} = await loadFixture(deployFixture);
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: investorMinCap-1})
+                ).to.be.reverted
+            });    
+        });
+
+        describe('when the investor has already met the min cap', function() {
+            it('allow the user to contribute below the min cap', async function() {
+                const {crowdsale, addr2} = await loadFixture(deployFixture);
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: investorMinCap})
+                ).to.be.fulfilled;
+
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: 1}) //Buy 1 wei
+                ).to.be.fulfilled;
+
+            });
+        });
+
+        describe('when the investor total contribution has exceeds the max cap', function() {
+            it('reject the transaction', async function() {
+                const {crowdsale, addr2} = await loadFixture(deployFixture);
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: ethers.utils.parseEther('1', 'ether')})
+                ).to.be.fulfilled;
+
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: investorMaxCap}) 
+                ).to.be.rejected;
+
+            });
+        });
+
+        describe('when the contribution is valid then it should be fullfilled', function() {
+            it('Succeds and updates the contribution amount', async function() {
+                const {crowdsale, addr2} = await loadFixture(deployFixture);
+                const constibutionAmount = ethers.utils.parseEther("2", "ether");
+                await expect(
+                    crowdsale.buyTokens(addr2.address, {value: constibutionAmount})
+                ).to.be.fulfilled;
+
+               expect(await crowdsale.getUserContribution(addr2.address)).to.equal(constibutionAmount);
+
+            });
+        });
+    });
+
 
 });
