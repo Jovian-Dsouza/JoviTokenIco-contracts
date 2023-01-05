@@ -10,7 +10,8 @@ describe("Crowdsale", function() {
     const _decimals = 18;
 
     const _rate = 500; //Number of tokens per 1 Eth
-    const _cap = ethers.utils.parseEther("2", "ether");
+    const _cap = ethers.utils.parseEther("100", "ether");
+    const _goal = ethers.utils.parseEther("50", "ether");
     const investorMinCap = ethers.utils.parseEther("0.002", "ether");
     const investorMaxCap = ethers.utils.parseEther("50", "ether");
     
@@ -27,7 +28,7 @@ describe("Crowdsale", function() {
         const _closingTime = _openingTime + duration.weeks(1);
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap, _openingTime, _closingTime);
+        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap, _goal, _openingTime, _closingTime);
         await crowdsale.deployed();
         
         //Add minter ownership
@@ -88,6 +89,14 @@ describe("Crowdsale", function() {
         it("should match the cap", async function () {
             const {contract, owner, crowdsale, addr2} = await loadFixture(deployFixture);
             expect(await crowdsale.cap()).to.equal(_cap);
+        });
+    });
+
+    describe("Refundable crowdsale", function() {
+        it("prevents the investor from claiming refund", async function() {
+            const { crowdsale, addr2 } = await loadFixture(deployFixture);
+            await crowdsale.buyTokens(addr2.address, {value: ethers.utils.parseEther('1', 'ether')});
+            await expect(crowdsale.claimRefund(addr2.address)).to.be.rejected;
         });
     });
 
