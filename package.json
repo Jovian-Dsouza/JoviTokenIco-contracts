@@ -24,6 +24,6 @@
   },
   "dependencies": {
     "@nomicfoundation/hardhat-network-helpers": "^1.0.7",
-    "@openzeppelin/contracts": "^2.5.0"
+    "@openzeppelin/contracts": "2.5.0"
   }
 }
