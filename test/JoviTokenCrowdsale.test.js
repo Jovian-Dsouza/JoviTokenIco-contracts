@@ -15,9 +15,13 @@ describe("Crowdsale", function() {
     const investorMinCap = ethers.utils.parseEther("0.002", "ether");
     const investorMaxCap = ethers.utils.parseEther("50", "ether");
     
+    const stagePreICO = 0;
+    const ratePreICO = _rate;
+    const stageICO = 1;
+    const rateICO = 250;
 
     async function deployFixture() {
-        const [owner, addr1, addr2] = await ethers.getSigners();
+        const [owner, wallet, addr2] = await ethers.getSigners();
         
         const ContractFactory = await ethers.getContractFactory("JoviToken");
         const contract = await ContractFactory.deploy(_name, _symbol, _decimals);
@@ -28,7 +32,7 @@ describe("Crowdsale", function() {
         const _closingTime = _openingTime + duration.weeks(1);
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, addr1.address, contract.address, _cap, _goal, _openingTime, _closingTime);
+        const crowdsale = await CrowdaleFactory.deploy(_rate, wallet.address, contract.address, _cap, _goal, _openingTime, _closingTime);
         await crowdsale.deployed();
         
         //Add minter ownership
@@ -37,23 +41,24 @@ describe("Crowdsale", function() {
         //Adavace time of the blockchain so that the crowdsale is open
         await time.increaseTo(_openingTime+1);
 
-        return { contract, crowdsale, owner, addr1, addr2};
+
+        return { contract, crowdsale, owner, wallet, addr2};
 
     }
 
     it("Should match the token", async function () {
-        const { contract, crowdsale, addr1} = await loadFixture(deployFixture);
+        const { contract, crowdsale} = await loadFixture(deployFixture);
         expect(await crowdsale.token()).to.equal(contract.address);
     });
 
     it("Should match the rate", async function () {
-        const { contract, crowdsale, addr1} = await loadFixture(deployFixture);
+        const { crowdsale} = await loadFixture(deployFixture);
         expect(await crowdsale.rate()).to.equal(_rate);
     });
 
     it("Should match the wallet", async function () {
-        const { contract, crowdsale, addr1} = await loadFixture(deployFixture);
-        expect(await crowdsale.wallet()).to.equal(addr1.address);
+        const { crowdsale, wallet} = await loadFixture(deployFixture);
+        expect(await crowdsale.wallet()).to.equal(wallet.address);
     });
 
 
@@ -67,6 +72,63 @@ describe("Crowdsale", function() {
             ).to.emit(crowdsale, "TokensPurchased");
         });
 
+    });
+
+    describe('crowdsale stages', function() {
+        it('should start with default preICO stage', async function() {
+            const {crowdsale} = await loadFixture(deployFixture);
+            expect(await crowdsale.stage()).to.equal(stagePreICO);
+        });
+
+        it('Should start with default preICO rate', async function() {
+            const {crowdsale} = await loadFixture(deployFixture);
+            expect(await crowdsale.rate()).to.equal(ratePreICO);
+        });
+
+        it('Allow the admin to update stage', async function() {
+            const {crowdsale, owner} = await loadFixture(deployFixture);
+            await expect(
+                crowdsale.setCrowdsaleStage(stageICO, {from: owner.address})
+            ).to.be.fulfilled;
+        });
+
+        it("Rate should change when stage in ICO", async function() {
+            const {crowdsale, owner} = await loadFixture(deployFixture);
+            await crowdsale.setCrowdsaleStage(stageICO, {from: owner.address});
+            expect(await crowdsale.rate()).to.equal(rateICO);
+        });
+
+        it('Reject the non-admin to update stage', async function() {
+            const {crowdsale, owner, addr2} = await loadFixture(deployFixture);
+            await expect(
+                crowdsale.setCrowdsaleStage(stageICO, {from: addr2.address})
+            ).to.be.rejected;
+        });
+        
+        describe("when the crowdsale is in PreICO stage", function() {
+            it('forward funds to the wallet', async function() {
+                const {crowdsale, owner, wallet, addr2} = await loadFixture(deployFixture);
+                const initialBalance = await ethers.provider.getBalance(wallet.address);
+                const value = ethers.utils.parseEther('1', 'ether')
+                await crowdsale.buyTokens(addr2.address, {value: value});
+                const finalBalance = await ethers.provider.getBalance(wallet.address);
+                expect(finalBalance).to.equal(initialBalance.add(value));
+            })
+        });
+
+        describe("when the crowdsale is in ICO stage", function() {
+            it('forward funds to the wallet', async function() {
+                const {crowdsale, owner, wallet, addr2} = await loadFixture(deployFixture);
+                const initialBalance = await ethers.provider.getBalance(wallet.address);
+                
+                await crowdsale.setCrowdsaleStage(stageICO, {from: owner.address});
+                const value = ethers.utils.parseEther('1', 'ether')
+                await crowdsale.buyTokens(addr2.address, {value: value});
+
+                const finalBalance = await ethers.provider.getBalance(wallet.address);
+                expect(finalBalance).to.equal(initialBalance);
+            })
+        });
     });
 
     describe('minted crowdsale', function() {
@@ -103,7 +165,7 @@ describe("Crowdsale", function() {
     describe('Buy tokens', function() {
         describe('when the contribution is less than the min cap', function() {
             it('should reject the transaction', async function() {
-                const {crowdsale, owner, addr1, addr2} = await loadFixture(deployFixture);
+                const {crowdsale, owner, addr2} = await loadFixture(deployFixture);
                 await expect(
                     crowdsale.buyTokens(addr2.address, {value: investorMinCap-1})
                 ).to.be.reverted

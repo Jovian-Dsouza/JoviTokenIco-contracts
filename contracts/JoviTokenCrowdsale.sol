@@ -6,13 +6,20 @@ import "@openzeppelin/contracts/crowdsale/emission/MintedCrowdsale.sol";
 import "@openzeppelin/contracts/crowdsale/validation/CappedCrowdsale.sol";
 import "@openzeppelin/contracts/crowdsale/validation/TimedCrowdsale.sol";
 import "@openzeppelin/contracts/crowdsale/distribution/RefundableCrowdsale.sol";
+import "@openzeppelin/contracts/ownership/Ownable.sol";
 
-contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, RefundableCrowdsale {
+contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, RefundableCrowdsale, Ownable {
 
     //Investor contribution capping
     uint256 public investorMinCap = 2e15; //0.002 ether
     uint256 public investtorMaxCap = 5e19; //50 ether
     mapping(address => uint256) public contribution;
+
+    //Crowdsale stages
+    enum CrowdsaleStage { PreICO, ICO }
+    CrowdsaleStage public stage = CrowdsaleStage.PreICO;
+
+    uint256 private _changeableRate;
 
     constructor(
         uint256 _rate, 
@@ -28,11 +35,53 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
     TimedCrowdsale(_openingTime, _closingTime)
     RefundableCrowdsale(_goal)
     public {
+        require(_rate > 0, "Crowdsale: rate is 0");
         require(_goal <= _cap, "Cant create crowdsale Goal is greater than Cap");
+        _changeableRate = _rate;
     }
 
     function getUserContribution(address _beneficiary) public view returns (uint256) {
         return contribution[_beneficiary];
+    }
+
+    /**
+     * @return the number of token units a buyer gets per wei.
+     */
+    function rate() public view returns (uint256) {
+        return _changeableRate;
+    }
+
+    /**
+     * @dev Override to extend the way in which ether is converted to tokens.
+     * @param weiAmount Value in wei to be converted into tokens
+     * @return Number of tokens that can be purchased with the specified _weiAmount
+     */
+    function _getTokenAmount(uint256 weiAmount) internal view returns (uint256) {
+        return weiAmount.mul(_changeableRate);
+    }
+
+    /**
+     * @dev Allows admin to update the crowdsale stage
+     * @param _stage Crowdsale stage
+     */
+    function setCrowdsaleStage(uint _stage) public onlyOwner {
+        if(uint(CrowdsaleStage.PreICO) == _stage) {
+            stage = CrowdsaleStage.PreICO;
+        } else if(uint(CrowdsaleStage.ICO) == _stage){
+            stage = CrowdsaleStage.ICO;
+            _changeableRate = 250;
+        }
+    }
+
+    /**
+     * @dev Determines how ETH is stored/forwarded on purchases.
+     */
+    function _forwardFunds() internal {
+        if(stage == CrowdsaleStage.PreICO){
+            wallet().transfer(msg.value);
+        } else if(stage == CrowdsaleStage.ICO){
+            super._forwardFunds();
+        }
     }
 
     /**
