@@ -13,6 +13,12 @@ import "./JoviToken.sol";
 
 contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, RefundableCrowdsale, Ownable {
 
+    //Token distribution
+    uint256 public tokenSalePercentage = 70;
+    uint256 public founderPercentage = 10;
+    uint256 public foundationPercentage = 10;
+    uint256 public parternsPercentage = 10;
+
     //Investor contribution capping
     uint256 public investorMinCap = 2e15; //0.002 ether
     uint256 public investtorMaxCap = 5e19; //50 ether
@@ -129,6 +135,8 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
             // Finish minting the token
             ERC20Mintable _mintableToken = ERC20Mintable(_joviToken);
             _mintableToken.renounceMinter();
+
+            //Distribute the token 
 
             // Unpause the token
             ERC20Pausable(_joviToken).unpause();

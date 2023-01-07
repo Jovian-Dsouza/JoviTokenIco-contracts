@@ -296,6 +296,24 @@ describe("Crowdsale", function() {
 
             });
         });
+
+        describe('Test Token distribution', function() {
+            it('Should have valid token distribution', async function(){
+                const {crowdsale} = await loadFixture(deployFixture);
+                const tokenSalePercentage = await crowdsale.tokenSalePercentage();
+                const founderPercentage = await crowdsale.founderPercentage();
+                const foundationPercentage = await crowdsale.foundationPercentage();
+                const parternsPercentage = await crowdsale.parternsPercentage();
+
+                const totalPercentage = tokenSalePercentage.toNumber() 
+                                        + founderPercentage.toNumber() 
+                                        + foundationPercentage.toNumber()
+                                        + parternsPercentage.toNumber();
+
+                assert.isTrue(totalPercentage == 100);
+
+            });
+        });
     });
 
 
