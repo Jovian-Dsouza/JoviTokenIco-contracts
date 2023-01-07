@@ -12,67 +12,69 @@ describe("Crowdsale", function() {
     const _rate = 500; //Number of tokens per 1 Eth
     const _cap = ethers.utils.parseEther("100", "ether");
     const _goal = ethers.utils.parseEther("50", "ether");
-    const investorMinCap = ethers.utils.parseEther("0.002", "ether");
-    const investorMaxCap = ethers.utils.parseEther("50", "ether");
+    const _investorMinCap = ethers.utils.parseEther("0.002", "ether");
+    const _investorMaxCap = ethers.utils.parseEther("50", "ether");
     
-    const stagePreICO = 0;
-    const ratePreICO = _rate;
-    const stageICO = 1;
-    const rateICO = 250;
+    const _stagePreICO = 0;
+    const _stageICO = 1;
+    const _preIcoRate = _rate;
+    const _IcoRate = 250;
 
-    const founderPercentage = 10;
-    const foundationPercentage = 10;
-    const partnersPercentage = 10;
+    const _tokenSalePercentage = 70;
+    const _founderPercentage = 10;
+    const _foundationPercentage = 10;
+    const _partnersPercentage = 10;
 
-    let _openingTime, _closingTime, releaseTime;
+    let _openingTime, _closingTime, _releaseTime;
 
     async function deployFixture() {
         const [owner, wallet, addr1, addr2, founderAddr, foundationAddr, partnersAddr] = await ethers.getSigners();
         
         const ContractFactory = await ethers.getContractFactory("JoviToken");
-        const contract = await ContractFactory.deploy(_name, _symbol, _decimals);
-        await contract.deployed();
+        const token = await ContractFactory.deploy(_name, _symbol, _decimals);
+        await token.deployed();
 
 
         _openingTime = await time.latest()  + duration.weeks(1);
         _closingTime = _openingTime + duration.weeks(1);
-        releaseTime = _closingTime + duration.years(1);
+        _releaseTime = _closingTime + duration.years(1);
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, 
+        const crowdsale = await CrowdaleFactory.deploy( _preIcoRate, 
+                                                        _IcoRate,
                                                         wallet.address, 
-                                                        contract.address, 
-                                                        _cap, 
+                                                        token.address, 
+                                                        _cap,
                                                         _goal, 
                                                         _openingTime, 
                                                         _closingTime,
                                                         founderAddr.address,
                                                         foundationAddr.address,
                                                         partnersAddr.address,
-                                                        releaseTime
+                                                        _releaseTime
                                                         );
         await crowdsale.deployed();
         
         // Pause the token
-        await contract.pause();
+        await token.pause();
 
         //Add Pauser role 
-        await contract.addPauser(crowdsale.address);
+        await token.addPauser(crowdsale.address);
 
         //Add minter ownership
-        await contract.addMinter(crowdsale.address);
+        await token.addMinter(crowdsale.address);
 
         //Adavace time of the blockchain so that the crowdsale is open
         await time.increaseTo(_openingTime+1);
 
 
-        return { contract, crowdsale, owner, wallet, addr1, addr2, founderAddr, foundationAddr, partnersAddr};
+        return { token, crowdsale, owner, wallet, addr1, addr2, founderAddr, foundationAddr, partnersAddr};
 
     }
 
     it("Should match the token", async function () {
-        const { contract, crowdsale} = await loadFixture(deployFixture);
-        expect(await crowdsale.token()).to.equal(contract.address);
+        const { token, crowdsale} = await loadFixture(deployFixture);
+        expect(await crowdsale.token()).to.equal(token.address);
     });
 
     it("Should match the rate", async function () {
@@ -89,7 +91,7 @@ describe("Crowdsale", function() {
     describe('accepting payments', function() {
 
         it('should accept payments', async function() {
-            const {contract, owner, crowdsale, addr2} = await loadFixture(deployFixture);
+            const {token, owner, crowdsale, addr2} = await loadFixture(deployFixture);
             let ethersToWei = ethers.utils.parseUnits("1", "ether");
             await expect(
                 crowdsale.buyTokens(addr2.address, {value: ethersToWei})
@@ -101,31 +103,31 @@ describe("Crowdsale", function() {
     describe('crowdsale stages', function() {
         it('should start with default preICO stage', async function() {
             const {crowdsale} = await loadFixture(deployFixture);
-            expect(await crowdsale.stage()).to.equal(stagePreICO);
+            expect(await crowdsale.stage()).to.equal(_stagePreICO);
         });
 
         it('Should start with default preICO rate', async function() {
             const {crowdsale} = await loadFixture(deployFixture);
-            expect(await crowdsale.rate()).to.equal(ratePreICO);
+            expect(await crowdsale.rate()).to.equal(_preIcoRate);
         });
 
         it('Allow the admin to update stage', async function() {
             const {crowdsale, owner} = await loadFixture(deployFixture);
             await expect(
-                crowdsale.setCrowdsaleStage(stageICO, {from: owner.address})
+                crowdsale.setCrowdsaleStage(_stageICO, {from: owner.address})
             ).to.be.fulfilled;
         });
 
         it("Rate should change when stage in ICO", async function() {
             const {crowdsale, owner} = await loadFixture(deployFixture);
-            await crowdsale.setCrowdsaleStage(stageICO, {from: owner.address});
-            expect(await crowdsale.rate()).to.equal(rateICO);
+            await crowdsale.setCrowdsaleStage(_stageICO, {from: owner.address});
+            expect(await crowdsale.rate()).to.equal(_IcoRate);
         });
 
         it('Reject the non-admin to update stage', async function() {
             const {crowdsale, owner, addr2} = await loadFixture(deployFixture);
             await expect(
-                crowdsale.setCrowdsaleStage(stageICO, {from: addr2.address})
+                crowdsale.setCrowdsaleStage(_stageICO, {from: addr2.address})
             ).to.be.rejected;
         });
         
@@ -145,27 +147,35 @@ describe("Crowdsale", function() {
                 const {crowdsale, owner, wallet, addr2} = await loadFixture(deployFixture);
                 const initialBalance = await ethers.provider.getBalance(wallet.address);
                 
-                await crowdsale.setCrowdsaleStage(stageICO, {from: owner.address});
+                await crowdsale.setCrowdsaleStage(_stageICO, {from: owner.address});
                 const value = ethers.utils.parseEther('1', 'ether')
                 await crowdsale.buyTokens(addr2.address, {value: value});
 
                 const finalBalance = await ethers.provider.getBalance(wallet.address);
                 expect(finalBalance).to.equal(initialBalance);
             })
+
+            it('Should not allow to change back to PreICO stage', async function() {
+                const {crowdsale, owner} = await loadFixture(deployFixture);
+                await crowdsale.setCrowdsaleStage(_stageICO, {from: owner.address});
+                await expect(
+                    crowdsale.setCrowdsaleStage(_stagePreICO, {from: owner.address})
+                    ).to.be.rejected;
+            });
         });
     });
 
     describe('minted crowdsale', function() {
         it('mints tokens after purchase', async function() {
-            const {contract, owner, crowdsale, addr2} = await loadFixture(deployFixture);
-            const originalTS = await contract.totalSupply();
+            const {token, owner, crowdsale, addr2} = await loadFixture(deployFixture);
+            const originalTS = await token.totalSupply();
 
             let ethersToWei = ethers.utils.parseUnits("1", "ether");
             await expect(
                 crowdsale.buyTokens(addr2.address, {value: ethersToWei})
             ).to.emit(crowdsale, "TokensPurchased");
 
-            const newTS = await contract.totalSupply();
+            const newTS = await token.totalSupply();
             assert.isTrue(newTS > originalTS);
 
         })
@@ -173,7 +183,7 @@ describe("Crowdsale", function() {
 
     describe("Capped Crowdsale", function () {
         it("should match the cap", async function () {
-            const {contract, owner, crowdsale, addr2} = await loadFixture(deployFixture);
+            const {token, owner, crowdsale, addr2} = await loadFixture(deployFixture);
             expect(await crowdsale.cap()).to.equal(_cap);
         });
     });
@@ -191,7 +201,7 @@ describe("Crowdsale", function() {
             it('should reject the transaction', async function() {
                 const {crowdsale, owner, addr2} = await loadFixture(deployFixture);
                 await expect(
-                    crowdsale.buyTokens(addr2.address, {value: investorMinCap-1})
+                    crowdsale.buyTokens(addr2.address, {value: _investorMinCap-1})
                 ).to.be.reverted
             });    
         });
@@ -200,7 +210,7 @@ describe("Crowdsale", function() {
             it('allow the user to contribute below the min cap', async function() {
                 const {crowdsale, addr2} = await loadFixture(deployFixture);
                 await expect(
-                    crowdsale.buyTokens(addr2.address, {value: investorMinCap})
+                    crowdsale.buyTokens(addr2.address, {value: _investorMinCap})
                 ).to.be.fulfilled;
 
                 await expect(
@@ -218,7 +228,7 @@ describe("Crowdsale", function() {
                 ).to.be.fulfilled;
 
                 await expect(
-                    crowdsale.buyTokens(addr2.address, {value: investorMaxCap}) 
+                    crowdsale.buyTokens(addr2.address, {value: _investorMaxCap}) 
                 ).to.be.rejected;
 
             });
@@ -239,9 +249,9 @@ describe("Crowdsale", function() {
 
         describe('Token Transfers', function() {
             it("should not allow token transfer during paused state", async function() {
-                    const {contract, crowdsale, addr1, addr2} = await loadFixture(deployFixture);
+                    const {token, crowdsale, addr1, addr2} = await loadFixture(deployFixture);
                     await crowdsale.connect(addr1).buyTokens(addr1.address, {value: ethers.utils.parseEther("2", "ether")});
-                    await expect(contract.connect(addr1).transfer(addr2.address, 1)).to.be.rejected;
+                    await expect(token.connect(addr1).transfer(addr2.address, 1)).to.be.rejected;
             });
         });
 
@@ -274,12 +284,12 @@ describe("Crowdsale", function() {
             });
 
             describe('When the goal is reached', function() {
-                let crowdsale, contract, addr1, addr2, founderAddr, foundationAddr, partnersAddr;
+                let crowdsale, token, addr1, addr2, founderAddr, foundationAddr, partnersAddr;
 
                 beforeEach(async function() {
                     const fixture = await loadFixture(deployFixture);
                     crowdsale = fixture.crowdsale;
-                    contract = fixture.contract;
+                    token = fixture.token;
                     addr1 = fixture.addr1;
                     addr2 = fixture.addr2;
                     founderAddr = fixture.founderAddr;
@@ -307,21 +317,21 @@ describe("Crowdsale", function() {
                 });
 
                 it("Token minting should be finished", async function() {
-                    expect(await contract.isMinter(crowdsale.address)).to.be.false;
+                    expect(await token.isMinter(crowdsale.address)).to.be.false;
                 });
 
                 it("Token should be unpaused", async function() {
-                    expect(await contract.paused()).to.be.false;
+                    expect(await token.paused()).to.be.false;
                 });
 
                 it("Token trnsfer should be enabled", async function() {
                     await expect(
-                        contract.connect(addr2).transfer(addr1.address, 1)
+                        token.connect(addr2).transfer(addr1.address, 1)
                     ).to.be.fulfilled;
                 });
 
                 it("TimeLock balance should match the distribution", async function() {
-                    let totalSupply = await contract.totalSupply();
+                    let totalSupply = await token.totalSupply();
                     totalSupply = totalSupply.toString();
 
                     const founderTimelock = await crowdsale.founderTimelock();
@@ -329,21 +339,21 @@ describe("Crowdsale", function() {
                     const partnersTimelock = await crowdsale.partnersTimelock();
                     
                     // Founder
-                    let founderBalance = await contract.balanceOf(founderTimelock);
+                    let founderBalance = await token.balanceOf(founderTimelock);
                     founderBalance = founderBalance / 1.0;
-                    let founderAmount = totalSupply / founderPercentage;
+                    let founderAmount = totalSupply / _founderPercentage;
                     assert.equal(founderBalance.toString(), founderAmount.toString());
 
                     // Foundation
-                    let foundationBalance = await contract.balanceOf(foundationTimelock);
+                    let foundationBalance = await token.balanceOf(foundationTimelock);
                     foundationBalance = foundationBalance / 1.0;
-                    let foundationAmount = totalSupply / foundationPercentage;
+                    let foundationAmount = totalSupply / _foundationPercentage;
                     assert.equal(foundationBalance.toString(), foundationAmount.toString());
 
                     // Partner
-                    let partnersBalance = await contract.balanceOf(partnersTimelock);
+                    let partnersBalance = await token.balanceOf(partnersTimelock);
                     partnersBalance = partnersBalance / 1.0;
-                    let partnersAmount = totalSupply / partnersPercentage;
+                    let partnersAmount = totalSupply / _partnersPercentage;
                     assert.equal(partnersBalance.toString(), partnersAmount.toString());
                     
                     //Check if we can release the timeLock
@@ -356,20 +366,20 @@ describe("Crowdsale", function() {
 
                     
                     //Release should be possible after release time
-                    await time.increaseTo(releaseTime+1);
+                    await time.increaseTo(_releaseTime+1);
                     //Founder
                     await expect(founderTimelockContract.release()).to.be.fulfilled;
-                    let founderFundBalance = await contract.balanceOf(founderAddr.address);
+                    let founderFundBalance = await token.balanceOf(founderAddr.address);
                     founderFundBalance = founderFundBalance / 1.0;
                     assert.equal(founderFundBalance.toString(), founderAmount.toString());
                     //Foundation
                     await expect(foundationTimelockContract.release()).to.be.fulfilled;
-                    let foundationFundBalance = await contract.balanceOf(foundationAddr.address);
+                    let foundationFundBalance = await token.balanceOf(foundationAddr.address);
                     foundationFundBalance = foundationFundBalance / 1.0;
                     assert.equal(foundationFundBalance.toString(), foundationAmount.toString());
                     //Partner
                     await expect(partnersTimelockContract.release()).to.be.fulfilled;
-                    let partnersFundBalance = await contract.balanceOf(partnersAddr.address);
+                    let partnersFundBalance = await token.balanceOf(partnersAddr.address);
                     partnersFundBalance = partnersFundBalance / 1.0;
                     assert.equal(partnersFundBalance.toString(), partnersAmount.toString());
                     

@@ -31,18 +31,21 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
 
     //Investor contribution capping
     uint256 public investorMinCap = 2e15; //0.002 ether
-    uint256 public investtorMaxCap = 5e19; //50 ether
+    uint256 public investorMaxCap = 5e19; //50 ether
     mapping(address => uint256) public contribution;
 
     //Crowdsale stages
     enum CrowdsaleStage { PreICO, ICO }
     CrowdsaleStage public stage = CrowdsaleStage.PreICO;
+    uint256 public preIcoRate;
+    uint256 public IcoRate;
 
-    uint256 private _changeableRate;
-    JoviToken private _joviToken;
+    uint256 private changeableRate;
+    JoviToken private joviToken;
 
     constructor(
-        uint256 _rate, 
+        uint256 _preIcoRate, 
+        uint256 _IcoRate,
         address payable _wallet, 
         JoviToken _token,
         uint256 _cap,
@@ -54,22 +57,30 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         address _partnersFund,
         uint256 _releaseTime
     )
-    Crowdsale(_rate, _wallet, _token)
+    Crowdsale(_preIcoRate, _wallet, _token)
     CappedCrowdsale(_cap)
     TimedCrowdsale(_openingTime, _closingTime)
     RefundableCrowdsale(_goal)
     public {
-        require(_rate > 0, "JoviTokenCrowdsale: rate is 0");
+        require(_preIcoRate > 0, "JoviTokenCrowdsale: preIcoRate is needs to be greater than 0");
+        require(_IcoRate > 0, "JoviTokenCrowdsale: IcoRate is needs to be greater than 0");
+        require(investorMinCap > 0, "JoviTokenCrowdsale: InvestorMinCap needs to be greater than 0");
+        require(investorMaxCap > 0, "JoviTokenCrowdsale: InvestorMinCap needs to be greater than 0");
+        require(investorMinCap < investorMaxCap, "JoviTokenCrowdsale: InvestorMinCap should be smaller than InvestorMaxCap");
+        require(investorMaxCap <= _cap, "JoviTokenCrowdsale: InvestorMaxCap should be smaller than Cap");
         require(_goal <= _cap, "JoviTokenCrowdsale: Cant create crowdsale Goal is greater than Cap");
         require(_founderFund != address(0), "JoviTokenCrowdsale: founderFund is the zero address");
         require(_foundationFund != address(0), "JoviTokenCrowdsale: foundationFund is the zero address");
         require(_partnersFund != address(0), "JoviTokenCrowdsale: partnersFund is the zero address");
-        _changeableRate = _rate;
-        _joviToken = _token;
+
+        changeableRate = _preIcoRate;
+        joviToken = _token;
         founderFund = _founderFund;
         foundationFund = _foundationFund;
         partnersFund = _partnersFund;
         releaseTime = _releaseTime;
+        preIcoRate = _preIcoRate;
+        IcoRate = _IcoRate;
     }
 
     function getUserContribution(address _beneficiary) public view returns (uint256) {
@@ -80,7 +91,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
      * @return the number of token units a buyer gets per wei.
      */
     function rate() public view returns (uint256) {
-        return _changeableRate;
+        return changeableRate;
     }
 
     /**
@@ -89,7 +100,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
      * @return Number of tokens that can be purchased with the specified _weiAmount
      */
     function _getTokenAmount(uint256 weiAmount) internal view returns (uint256) {
-        return weiAmount.mul(_changeableRate);
+        return weiAmount.mul(changeableRate);
     }
 
     /**
@@ -97,11 +108,12 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
      * @param _stage Crowdsale stage
      */
     function setCrowdsaleStage(uint _stage) public onlyOwner {
-        if(uint(CrowdsaleStage.PreICO) == _stage) {
-            stage = CrowdsaleStage.PreICO;
-        } else if(uint(CrowdsaleStage.ICO) == _stage){
+        if(_stage == uint(CrowdsaleStage.ICO)){
             stage = CrowdsaleStage.ICO;
-            _changeableRate = 250;
+            changeableRate = IcoRate;
+        } else if(_stage == uint(CrowdsaleStage.PreICO)){
+            require(stage != CrowdsaleStage.ICO, "JoviTokenCrowdsale: Cant change stage back to PreICO from ICO");
+            changeableRate = preIcoRate;
         }
     }
 
@@ -133,7 +145,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
 
         uint256 _existingContribution = contribution[_beneficiary];
         uint256 _newContribution = _existingContribution.add(_weiAmount);
-        require(_newContribution >= investorMinCap && _newContribution <= investtorMaxCap);
+        require(_newContribution >= investorMinCap && _newContribution <= investorMaxCap);
     }
 
     /**
@@ -154,7 +166,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
     function _finalization() internal {
         if (goalReached()) {
             // Finish minting the token
-            ERC20Mintable _mintableToken = ERC20Mintable(_joviToken);
+            ERC20Mintable _mintableToken = ERC20Mintable(joviToken);
 
             //Distribute the tokens
             uint256 _tokenSaleSupply = _mintableToken.totalSupply();
@@ -174,7 +186,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
             _mintableToken.renounceMinter();
 
             // Unpause the token
-            ERC20Pausable(_joviToken).unpause();
+            ERC20Pausable(joviToken).unpause();
             
         } 
 
