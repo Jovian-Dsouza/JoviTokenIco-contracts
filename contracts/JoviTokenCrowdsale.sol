@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.5.0;
 
+import "@openzeppelin/contracts/token/ERC20/ERC20Mintable.sol"; 
+import "@openzeppelin/contracts/token/ERC20/ERC20Pausable.sol"; 
 import "@openzeppelin/contracts/crowdsale/Crowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/emission/MintedCrowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/validation/CappedCrowdsale.sol";
 import "@openzeppelin/contracts/crowdsale/validation/TimedCrowdsale.sol";
 import "@openzeppelin/contracts/crowdsale/distribution/RefundableCrowdsale.sol";
 import "@openzeppelin/contracts/ownership/Ownable.sol";
+import "./JoviToken.sol";
 
 contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, RefundableCrowdsale, Ownable {
 
@@ -20,11 +23,12 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
     CrowdsaleStage public stage = CrowdsaleStage.PreICO;
 
     uint256 private _changeableRate;
+    JoviToken private _joviToken;
 
     constructor(
         uint256 _rate, 
         address payable _wallet, 
-        IERC20 _token,
+        JoviToken _token,
         uint256 _cap,
         uint256 _goal,
         uint256 _openingTime, 
@@ -38,6 +42,7 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         require(_rate > 0, "Crowdsale: rate is 0");
         require(_goal <= _cap, "Cant create crowdsale Goal is greater than Cap");
         _changeableRate = _rate;
+        _joviToken = _token;
     }
 
     function getUserContribution(address _beneficiary) public view returns (uint256) {
@@ -114,6 +119,23 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         super._updatePurchasingState(_beneficiary, _weiAmount);
 
         contribution[_beneficiary] = contribution[_beneficiary].add(_weiAmount);
+    }
+
+    /**
+     * @dev Stop minting and unpause the token when the crowdsale is over
+     */
+    function _finalization() internal {
+        if (goalReached()) {
+            // Finish minting the token
+            ERC20Mintable _mintableToken = ERC20Mintable(_joviToken);
+            _mintableToken.renounceMinter();
+
+            // Unpause the token
+            ERC20Pausable(_joviToken).unpause();
+            
+        } 
+
+        super._finalization();
     }
 
 }

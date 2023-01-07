@@ -20,21 +20,29 @@ describe("Crowdsale", function() {
     const stageICO = 1;
     const rateICO = 250;
 
+    let _openingTime, _closingTime;
+
     async function deployFixture() {
-        const [owner, wallet, addr2] = await ethers.getSigners();
+        const [owner, wallet, addr1, addr2] = await ethers.getSigners();
         
         const ContractFactory = await ethers.getContractFactory("JoviToken");
         const contract = await ContractFactory.deploy(_name, _symbol, _decimals);
         await contract.deployed();
 
 
-        const _openingTime = await time.latest()  + duration.weeks(1);
-        const _closingTime = _openingTime + duration.weeks(1);
+        _openingTime = await time.latest()  + duration.weeks(1);
+        _closingTime = _openingTime + duration.weeks(1);
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
         const crowdsale = await CrowdaleFactory.deploy(_rate, wallet.address, contract.address, _cap, _goal, _openingTime, _closingTime);
         await crowdsale.deployed();
         
+        // Pause the token
+        await contract.pause();
+
+        //Add Pauser role 
+        await contract.addPauser(crowdsale.address);
+
         //Add minter ownership
         await contract.addMinter(crowdsale.address);
 
@@ -42,7 +50,7 @@ describe("Crowdsale", function() {
         await time.increaseTo(_openingTime+1);
 
 
-        return { contract, crowdsale, owner, wallet, addr2};
+        return { contract, crowdsale, owner, wallet, addr1, addr2};
 
     }
 
@@ -209,6 +217,82 @@ describe("Crowdsale", function() {
                 ).to.be.fulfilled;
 
                expect(await crowdsale.getUserContribution(addr2.address)).to.equal(constibutionAmount);
+
+            });
+        });
+
+        describe('Token Transfers', function() {
+            it("should not allow token transfer during paused state", async function() {
+                    const {contract, crowdsale, addr1, addr2} = await loadFixture(deployFixture);
+                    await crowdsale.connect(addr1).buyTokens(addr1.address, {value: ethers.utils.parseEther("2", "ether")});
+                    await expect(contract.connect(addr1).transfer(addr2.address, 1)).to.be.rejected;
+            });
+        });
+
+        describe('Finalize the crowdsale', function() {
+            describe('When the goal is not reached', function() {
+                let crowdsale, addr2;
+
+                beforeEach(async function() {
+                    const fixture = await loadFixture(deployFixture);
+                    crowdsale = fixture.crowdsale;
+                    addr2 = fixture.addr2;
+
+                    //addr2 buys some ether
+                    const constibutionAmount = ethers.utils.parseEther("2", "ether");
+                    await crowdsale.buyTokens(addr2.address, {value: constibutionAmount});
+
+                    //Time is over
+                    await time.increaseTo(_closingTime+1);
+
+                    //Finialize the crowdsale
+                    await crowdsale.finalize();
+                });
+                
+                it("Should allow the investor to claim refund", async function() {
+                    await expect(
+                        crowdsale.claimRefund(addr2.address)
+                    ).to.be.fulfilled;
+                });
+
+            });
+
+            describe('When the goal is reached', function() {
+                let crowdsale, contract, addr2;
+
+                beforeEach(async function() {
+                    const fixture = await loadFixture(deployFixture);
+                    crowdsale = fixture.crowdsale;
+                    contract = fixture.contract;
+                    addr2 = fixture.addr2;
+
+                    //addr2 buys ether so that the goal is reached
+                    await crowdsale.buyTokens(addr2.address, {value: _goal});
+
+                    //Time is over
+                    await time.increaseTo(_closingTime+1);
+
+                    //Finialize the crowdsale
+                    await crowdsale.finalize();
+                });
+                
+                it("Should not allow the investor to claim refund", async function() {
+                    await expect(
+                        crowdsale.claimRefund(addr2.address)
+                    ).to.be.rejected;
+                });
+
+                it("Goal reached should be true", async function() {
+                    expect(await crowdsale.goalReached()).to.be.true;
+                });
+
+                it("Token minting should be finished", async function() {
+                    expect(await contract.isMinter(crowdsale.address)).to.be.false;
+                });
+
+                it("Token should be unpaused", async function() {
+                    expect(await contract.paused()).to.be.false;
+                });
 
             });
         });
