@@ -3,6 +3,7 @@ pragma solidity ^0.5.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20Mintable.sol"; 
 import "@openzeppelin/contracts/token/ERC20/ERC20Pausable.sol"; 
+import "@openzeppelin/contracts/token/ERC20/TokenTimelock.sol";
 import "@openzeppelin/contracts/crowdsale/Crowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/emission/MintedCrowdsale.sol"; 
 import "@openzeppelin/contracts/crowdsale/validation/CappedCrowdsale.sol";
@@ -17,7 +18,16 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
     uint256 public tokenSalePercentage = 70;
     uint256 public founderPercentage = 10;
     uint256 public foundationPercentage = 10;
-    uint256 public parternsPercentage = 10;
+    uint256 public partnersPercentage = 10;
+
+    address public founderFund;
+    address public foundationFund;
+    address public partnersFund;
+
+    uint256 public releaseTime;
+    address public founderTimelock;
+    address public foundationTimelock;
+    address public partnersTimelock;
 
     //Investor contribution capping
     uint256 public investorMinCap = 2e15; //0.002 ether
@@ -38,17 +48,28 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         uint256 _cap,
         uint256 _goal,
         uint256 _openingTime, 
-        uint256 _closingTime
+        uint256 _closingTime,
+        address _founderFund,
+        address _foundationFund,
+        address _partnersFund,
+        uint256 _releaseTime
     )
     Crowdsale(_rate, _wallet, _token)
     CappedCrowdsale(_cap)
     TimedCrowdsale(_openingTime, _closingTime)
     RefundableCrowdsale(_goal)
     public {
-        require(_rate > 0, "Crowdsale: rate is 0");
-        require(_goal <= _cap, "Cant create crowdsale Goal is greater than Cap");
+        require(_rate > 0, "JoviTokenCrowdsale: rate is 0");
+        require(_goal <= _cap, "JoviTokenCrowdsale: Cant create crowdsale Goal is greater than Cap");
+        require(_founderFund != address(0), "JoviTokenCrowdsale: founderFund is the zero address");
+        require(_foundationFund != address(0), "JoviTokenCrowdsale: foundationFund is the zero address");
+        require(_partnersFund != address(0), "JoviTokenCrowdsale: partnersFund is the zero address");
         _changeableRate = _rate;
         _joviToken = _token;
+        founderFund = _founderFund;
+        foundationFund = _foundationFund;
+        partnersFund = _partnersFund;
+        releaseTime = _releaseTime;
     }
 
     function getUserContribution(address _beneficiary) public view returns (uint256) {
@@ -134,9 +155,23 @@ contract JoviTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         if (goalReached()) {
             // Finish minting the token
             ERC20Mintable _mintableToken = ERC20Mintable(_joviToken);
-            _mintableToken.renounceMinter();
 
-            //Distribute the token 
+            //Distribute the tokens
+            uint256 _tokenSaleSupply = _mintableToken.totalSupply();
+            uint256 _totalSupply = _tokenSaleSupply.mul(100).div(tokenSalePercentage);
+            uint256 _founderSupply = _totalSupply.mul(founderPercentage).div(100);
+            uint256 _foundationSupply = _totalSupply.mul(foundationPercentage).div(100);
+            uint256 _partnersSupply = _totalSupply.mul(partnersPercentage).div(100);
+
+            founderTimelock = address(new TokenTimelock(token(), founderFund, releaseTime));
+            foundationTimelock = address(new TokenTimelock(token(), foundationFund, releaseTime));
+            partnersTimelock = address(new TokenTimelock(token(), partnersFund, releaseTime));
+
+            _mintableToken.mint(founderTimelock, _founderSupply);
+            _mintableToken.mint(foundationTimelock, _foundationSupply);
+            _mintableToken.mint(partnersTimelock, _partnersSupply);
+
+            _mintableToken.renounceMinter();
 
             // Unpause the token
             ERC20Pausable(_joviToken).unpause();

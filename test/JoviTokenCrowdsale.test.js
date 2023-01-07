@@ -20,10 +20,14 @@ describe("Crowdsale", function() {
     const stageICO = 1;
     const rateICO = 250;
 
-    let _openingTime, _closingTime;
+    const founderPercentage = 10;
+    const foundationPercentage = 10;
+    const partnersPercentage = 10;
+
+    let _openingTime, _closingTime, releaseTime;
 
     async function deployFixture() {
-        const [owner, wallet, addr1, addr2] = await ethers.getSigners();
+        const [owner, wallet, addr1, addr2, founderAddr, foundationAddr, partnersAddr] = await ethers.getSigners();
         
         const ContractFactory = await ethers.getContractFactory("JoviToken");
         const contract = await ContractFactory.deploy(_name, _symbol, _decimals);
@@ -32,9 +36,21 @@ describe("Crowdsale", function() {
 
         _openingTime = await time.latest()  + duration.weeks(1);
         _closingTime = _openingTime + duration.weeks(1);
+        releaseTime = _closingTime + duration.years(1);
 
         const CrowdaleFactory = await ethers.getContractFactory("JoviTokenCrowdsale");
-        const crowdsale = await CrowdaleFactory.deploy(_rate, wallet.address, contract.address, _cap, _goal, _openingTime, _closingTime);
+        const crowdsale = await CrowdaleFactory.deploy(_rate, 
+                                                        wallet.address, 
+                                                        contract.address, 
+                                                        _cap, 
+                                                        _goal, 
+                                                        _openingTime, 
+                                                        _closingTime,
+                                                        founderAddr.address,
+                                                        foundationAddr.address,
+                                                        partnersAddr.address,
+                                                        releaseTime
+                                                        );
         await crowdsale.deployed();
         
         // Pause the token
@@ -50,7 +66,7 @@ describe("Crowdsale", function() {
         await time.increaseTo(_openingTime+1);
 
 
-        return { contract, crowdsale, owner, wallet, addr1, addr2};
+        return { contract, crowdsale, owner, wallet, addr1, addr2, founderAddr, foundationAddr, partnersAddr};
 
     }
 
@@ -258,13 +274,17 @@ describe("Crowdsale", function() {
             });
 
             describe('When the goal is reached', function() {
-                let crowdsale, contract, addr2;
+                let crowdsale, contract, addr1, addr2, founderAddr, foundationAddr, partnersAddr;
 
                 beforeEach(async function() {
                     const fixture = await loadFixture(deployFixture);
                     crowdsale = fixture.crowdsale;
                     contract = fixture.contract;
+                    addr1 = fixture.addr1;
                     addr2 = fixture.addr2;
+                    founderAddr = fixture.founderAddr;
+                    foundationAddr = fixture.foundationAddr;
+                    partnersAddr = fixture.partnersAddr;
 
                     //addr2 buys ether so that the goal is reached
                     await crowdsale.buyTokens(addr2.address, {value: _goal});
@@ -294,6 +314,69 @@ describe("Crowdsale", function() {
                     expect(await contract.paused()).to.be.false;
                 });
 
+                it("Token trnsfer should be enabled", async function() {
+                    await expect(
+                        contract.connect(addr2).transfer(addr1.address, 1)
+                    ).to.be.fulfilled;
+                });
+
+                it("TimeLock balance should match the distribution", async function() {
+                    let totalSupply = await contract.totalSupply();
+                    totalSupply = totalSupply.toString();
+
+                    const founderTimelock = await crowdsale.founderTimelock();
+                    const foundationTimelock = await crowdsale.foundationTimelock();
+                    const partnersTimelock = await crowdsale.partnersTimelock();
+                    
+                    // Founder
+                    let founderBalance = await contract.balanceOf(founderTimelock);
+                    founderBalance = founderBalance / 1.0;
+                    let founderAmount = totalSupply / founderPercentage;
+                    assert.equal(founderBalance.toString(), founderAmount.toString());
+
+                    // Foundation
+                    let foundationBalance = await contract.balanceOf(foundationTimelock);
+                    foundationBalance = foundationBalance / 1.0;
+                    let foundationAmount = totalSupply / foundationPercentage;
+                    assert.equal(foundationBalance.toString(), foundationAmount.toString());
+
+                    // Partner
+                    let partnersBalance = await contract.balanceOf(partnersTimelock);
+                    partnersBalance = partnersBalance / 1.0;
+                    let partnersAmount = totalSupply / partnersPercentage;
+                    assert.equal(partnersBalance.toString(), partnersAmount.toString());
+                    
+                    //Check if we can release the timeLock
+                    const founderTimelockContract = await ethers.getContractAt("TokenTimelock", founderTimelock);
+                    await expect(founderTimelockContract.release()).to.be.rejected;
+                    const foundationTimelockContract = await ethers.getContractAt("TokenTimelock", foundationTimelock);
+                    await expect(foundationTimelockContract.release()).to.be.rejected;
+                    const partnersTimelockContract = await ethers.getContractAt("TokenTimelock", partnersTimelock);
+                    await expect(partnersTimelockContract.release()).to.be.rejected;
+
+                    
+                    //Release should be possible after release time
+                    await time.increaseTo(releaseTime+1);
+                    //Founder
+                    await expect(founderTimelockContract.release()).to.be.fulfilled;
+                    let founderFundBalance = await contract.balanceOf(founderAddr.address);
+                    founderFundBalance = founderFundBalance / 1.0;
+                    assert.equal(founderFundBalance.toString(), founderAmount.toString());
+                    //Foundation
+                    await expect(foundationTimelockContract.release()).to.be.fulfilled;
+                    let foundationFundBalance = await contract.balanceOf(foundationAddr.address);
+                    foundationFundBalance = foundationFundBalance / 1.0;
+                    assert.equal(foundationFundBalance.toString(), foundationAmount.toString());
+                    //Partner
+                    await expect(partnersTimelockContract.release()).to.be.fulfilled;
+                    let partnersFundBalance = await contract.balanceOf(partnersAddr.address);
+                    partnersFundBalance = partnersFundBalance / 1.0;
+                    assert.equal(partnersFundBalance.toString(), partnersAmount.toString());
+                    
+                    
+
+                });
+
             });
         });
 
@@ -303,12 +386,12 @@ describe("Crowdsale", function() {
                 const tokenSalePercentage = await crowdsale.tokenSalePercentage();
                 const founderPercentage = await crowdsale.founderPercentage();
                 const foundationPercentage = await crowdsale.foundationPercentage();
-                const parternsPercentage = await crowdsale.parternsPercentage();
+                const partnersPercentage = await crowdsale.partnersPercentage();
 
                 const totalPercentage = tokenSalePercentage.toNumber() 
                                         + founderPercentage.toNumber() 
                                         + foundationPercentage.toNumber()
-                                        + parternsPercentage.toNumber();
+                                        + partnersPercentage.toNumber();
 
                 assert.isTrue(totalPercentage == 100);
 
