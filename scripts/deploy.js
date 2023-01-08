@@ -9,9 +9,9 @@ const _cap = ethers.utils.parseEther("100", "ether");
 const _goal = ethers.utils.parseEther("50", "ether");
 const _ratePreICO = _rate;
 const _rateICO = 250;
-const _openingTime = latestTime + duration.weeks(1);
-const _closingTime = _openingTime + duration.weeks(1);
-const _releaseTime = _closingTime + duration.weeks(4);
+const _openingTime = latestTime + duration.minutes(5);
+const _closingTime = _openingTime + duration.years(1);
+const _releaseTime = _closingTime + duration.years(2);
 
 async function main() {
   let [owner, wallet, founderAddr, foundationAddr, partnersAddr] = await ethers.getSigners();
